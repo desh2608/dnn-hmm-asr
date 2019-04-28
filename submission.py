@@ -6,6 +6,7 @@
 import argparse
 import logging
 import numpy as np
+import pickle
 
 # neural network related
 from sklearn.neural_network import MLPClassifier
@@ -102,18 +103,20 @@ def backward(a, o, mu, r):
 
 def getExpandedData(data):
     T = data.shape[0]
-    data_0 = data[0]
-    data_T = data[T-1]
+    
+    data_0 = np.copy(data[0])
+    data_T = np.copy(data[T-1])
+
     for i in range(3):
         data = np.insert(data, 0, data_0, axis=0)
         data = np.insert(data, -1, data_T, axis=0)
 
-    data_expanded = []
+    data_expanded = np.zeros((T,7*data.shape[1]))
     for t in range(3, T+3):
-        frame_expanded = np.concatenate((data[t-3], data[t-2], data[t-1], data[t],
-            data[t+1], data[t+2], data[t+3]))
-        data_expanded.append(frame_expanded)
-    return (np.array(data_expanded))
+        np.concatenate((data[t-3], data[t-2], data[t-1], data[t],
+            data[t+1], data[t+2], data[t+3]), out=data_expanded[t-3])
+
+    return (data_expanded)
 
 class SingleGauss():
     def __init__(self):
@@ -340,7 +343,7 @@ def hmm_train(digits, train_data, sg_model, nstate, niter):
     return hmm_model
 
 
-def mlp_train(digits, train_data, hmm_model, uniq_state_dict, nepoch, lr, nunits=(256, 256), bsize=128):
+def mlp_train(digits, train_data, hmm_model, uniq_state_dict, nepoch, lr, nunits=(256, 256)):
 
     #TODO: Complete the function to train MLP and create HMMMLP object for each digit
     # Get unique output IDs for MLP, perform alignment to get labels and perform context expansion
@@ -348,6 +351,7 @@ def mlp_train(digits, train_data, hmm_model, uniq_state_dict, nepoch, lr, nunits
 
     # Get unique state sequences
     seq_dict = {}
+    
     for digit in digits:
         uniq = lambda t: uniq_state_dict[(digit, t)]
         vfunc = np.vectorize(uniq)
@@ -379,7 +383,7 @@ def mlp_train(digits, train_data, hmm_model, uniq_state_dict, nepoch, lr, nunits
     #TODO: A simple scikit-learn MLPClassifier call is given below, check other arguments and play with it
     #OPTIONAL: Try pytorch instead of scikit-learn MLPClassifier  
     mlp = MLPClassifier(hidden_layer_sizes=nunits, random_state=1, early_stopping=True, verbose=True,
-        validation_fraction=0.1, shuffle=True, batch_size=128, tol=0.001, max_iter=nepoch)
+        validation_fraction=0.1)
 
     mlp.fit(O,S)
 
@@ -395,9 +399,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('train', type=str, help='training data')
     parser.add_argument('test', type=str, help='test data')
-    parser.add_argument('--niter', type=int, default=1)
+    parser.add_argument('--niter', type=int, default=10)
     parser.add_argument('--nstate', type=int, default=5)
-    parser.add_argument('--nepoch', type=int, default=5)
+    parser.add_argument('--nepoch', type=int, default=10)
     parser.add_argument('--lr', type=int, default=0.01)
     parser.add_argument('--mode', type=str, default='mlp',
                         choices=['hmm', 'mlp'],
@@ -413,11 +417,12 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format=log_format)
 
     digits = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "z", "o"]
-    states = range(args.nstate)
     uniq_state_dict = {}
-    for i, digit in enumerate(digits):
-        for state in states:
-            uniq_state_dict[(digit, state)] = i*len(states) + state
+    i=0
+    for digit in digits:
+        for state in range(args.nstate):
+            uniq_state_dict[(digit, state)] = i
+            i += 1
 
     # read training data
     with open(args.train) as f:
@@ -437,12 +442,20 @@ if __name__ == '__main__':
     sg_model = sg_train(digits, train_data)
 
     if args.mode == 'hmm':
-        model = hmm_train(digits, train_data, sg_model, args.nstate, args.niter)
+        try:
+            model = pickle.load(open('hmm.pickle','rb'))
+        except:
+            model = hmm_train(digits, train_data, sg_model, args.nstate, args.niter)
+            pickle.dump(model, open('hmm.pickle','wb'))
     elif args.mode == 'mlp':
-        hmm_model = hmm_train(digits, train_data, sg_model, args.nstate, args.niter)
+        try:
+            hmm_model = pickle.load(open('hmm.pickle','rb'))
+        except:
+            hmm_model = hmm_train(digits, train_data, sg_model, args.nstate, args.niter)
+            pickle.dump(hmm_model, open('hmm.pickle','wb'))
 	#TODO: Modify MLP training function call with appropriate arguments here
         model = mlp_train(digits, train_data, hmm_model, uniq_state_dict, nepoch=args.nepoch, lr=args.lr, 
-            nunits=(256, 256), bsize=128)
+            nunits=(256, 256))
 
     # test
     total_count = 0
