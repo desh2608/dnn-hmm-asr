@@ -280,12 +280,12 @@ class HMMMLP():
         mlp_ll = self.mlp_predict(o)
 
 
-        log_alpha[0] += np.array([mlp_ll[0][self.uniq_state_dict[(digit,j)]] - self.log_prior[self.uniq_state_dict[(digit,j)]]
+        log_alpha[0] += np.array([mlp_ll[0][self.uniq_state_dict[(digit,j)]] + self.log_prior[self.uniq_state_dict[(digit,j)]]
             for j in range(J)])
 
         for t in range(1,T):
             for j in range(J):
-                mlp_ll_t = mlp_ll[t][self.uniq_state_dict[(digit,j)]] - self.log_prior[self.uniq_state_dict[(digit,j)]]
+                mlp_ll_t = mlp_ll[t][self.uniq_state_dict[(digit,j)]] + self.log_prior[self.uniq_state_dict[(digit,j)]]
                 log_alpha[t,j] = mlp_ll_t + logSumExp(elog(a[:,j].T) + log_alpha[t-1])
 
         return log_alpha
